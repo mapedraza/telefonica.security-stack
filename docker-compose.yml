@@ -1,0 +1,132 @@
+version: "3.6"
+ 
+services:
+
+  iot-mongo:
+    container_name: iot-mongo
+    hostname: iot-mongo
+    image: mongo:4.2.12
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_VERSION: 4.2.12
+    logging:
+      driver: json-file
+      options:
+        max-size: "250m"
+   
+  iot-mysql:
+    container_name: iot-mysql
+    hostname: iot-mysql
+    image: mysql:5.7.33
+    expose:
+      - "3306"
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: mysqlpwd1234
+      MYSQL_DATABASE: keypass
+      MYSQL_USER: keypass
+      MYSQL_PASSWORD: keypass
+    logging:
+      driver: json-file
+      options:
+        max-size: "250m"
+   
+  iot-orion:
+    container_name: iot-orion
+    hostname: iot-orion
+    image: telefonicaiot/fiware-orion:latest
+    links:
+      - iot-mongo
+    ports:
+      - "10026:1026"
+    environment:
+      - ORION_MONGO_HOST=iot-mongo
+      - ORION_LOG_LEVEL=INFO
+    logging:
+      driver: json-file
+      options:
+        max-size: "250m"
+   
+  iot-orchestrator:
+    container_name: iot-orchestrator
+    hostname: iot-orchestrator
+    image: telefonicaiot/orchestrator:latest
+    links:
+      - iot-keystone
+      - iot-keypass
+      - iot-pep-orion
+      - iot-mongo
+    ports:
+      - "8084:8084"
+    environment:
+      - DEBUG_LEVEL=WARN
+    command: -keystonehost iot-keystone -keypasshost iot-keypass -orionhost iot-pep-orion -mongodburi iot-mongo -peppwd proxypwd1234
+    logging:
+      driver: json-file
+      options:
+        max-size: "250m"
+   
+  iot-keypass:
+    container_name: iot-keypass
+    hostname: iot-keypass
+    image: telefonicaiot/fiware-keypass:latest
+    links:
+      - iot-mysql
+    ports:
+      - "127.0.0.1:17070:7070"
+      - "127.0.0.1:7071:7071"
+    environment:
+      - KEYPASS_DB_TIMEOUT=240
+    command: -dbhost iot-mysql
+    logging:
+      driver: json-file
+      options:
+        max-size: "250m"
+   
+  iot-keystone:
+    container_name: iot-keystone
+    hostname: iot-keystone
+    image: telefonicaiot/fiware-keystone-spassword:latest
+    links:
+      - iot-mysql
+    ports:
+      - "5001:5001"
+    environment:
+      - TOKEN_EXPIRATION_TIME=10800
+      - REVOKE_EXPIRATION_BUFFER=1800
+      - LOG_LEVEL=WARN
+    command: -dbhost iot-mysql -default_pwd proxypwd1234 -mysql_pwd mysqlpwd1234
+    logging:
+      driver: json-file
+      options:
+        max-size: "250m"
+   
+  iot-pep-orion:
+    container_name: iot-pep-orion
+    hostname: iot-pep-orion
+    image: telefonicaiot/fiware-pep-steelskin:latest
+    links:
+      - iot-orion
+      - iot-keystone
+      - iot-keypass
+    ports:
+      - "1026:1026"
+      - "11211:11211"
+    environment:
+      - COMPONENT_PLUGIN=orion
+      - TARGET_HOST=iot-orion
+      - TARGET_PORT=1026
+      - PROXY_USERNAME=pep
+      - PROXY_PASSWORD=proxypwd1234
+      - ACCESS_HOST=iot-keypass
+      - ACCESS_PORT=7070
+      - AUTHENTICATION_HOST=iot-keystone
+      - AUTHENTICATION_PORT=5001
+      - ACCESS_ACCOUNT=false
+      - ACCESS_ACCOUNTFILE=/var/log/pepAccountOrion.log
+    logging:
+      driver: json-file
+      options:
+        max-size: "250m"
